@@ -4,6 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "rjwt"
+version = "0.1.0"
 requires-python = ">=3.8"
 classifiers = [
     "Programming Language :: Rust",
@@ -11,5 +12,6 @@ classifiers = [
     "Programming Language :: Python :: Implementation :: PyPy",
 ]
 dynamic = ["version"]
+
 [tool.maturin]
 features = ["pyo3/extension-module"]

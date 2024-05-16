@@ -25,7 +25,7 @@ macro_rules! add_classes {
 
 #[pymodule]
 fn rjwt(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    add_classes!(m, HashAlgorithms, HMAC);
+    add_classes!(m, HashAlgorithms, HMAC, ECDSA);
     Ok(())
 }
 
@@ -41,8 +41,7 @@ enum HashAlgorithms {
     ES384,
 }
 
-#[pyclass(module = "rjwt")]
-// #[derive(Clone)]
+#[pyclass]
 struct HMAC {
     privkey: EncodingKey, // For HMAC same secret for both
     pubkey: DecodingKey,
@@ -62,6 +61,7 @@ impl HMAC {
         };
         let mut val = Validation::new(algo);
         val.validate_aud = false;
+        val.leeway = 10;
 
         HMAC {
             privkey: EncodingKey::from_secret(key.as_bytes()),
@@ -121,10 +121,11 @@ impl ECDSA {
         };
         let mut val = Validation::new(algo);
         val.validate_aud = false;
+        val.leeway = 10;
 
         ECDSA {
-            privkey: EncodingKey::from_secret(priv_pem.as_bytes()),
-            pubkey: DecodingKey::from_secret(pub_pem.as_bytes()),
+            privkey: EncodingKey::from_ec_pem(priv_pem.as_bytes()).unwrap(),
+            pubkey: DecodingKey::from_ec_pem(pub_pem.as_bytes()).unwrap(),
             validation: val,
             header: Header::new(algo),
         }
@@ -143,15 +144,16 @@ impl ECDSA {
     // If valid, returns a dict, else None
     #[pyo3(signature = (token_str))]
     fn decode(&self, token_str: &Bound<'_, PyString>) -> Option<HashMap<String, Py<PyAny>>> {
-        if let Ok(token_rstr) = token_str.to_str() {
-            match decode::<TokenClaims>(&token_rstr, &self.pubkey, &self.validation) {
-                Ok(token) => Some(Python::with_gil(|py| {
-                    claims_to_pyhashmap(py, &token.claims)
-                })),
-                Err(_) => None,
+        match token_str.to_str() {
+            Ok(token_rstr) => {
+                match decode::<TokenClaims>(&token_rstr, &self.pubkey, &self.validation) {
+                    Ok(token) => Some(Python::with_gil(|py| {
+                        claims_to_pyhashmap(py, &token.claims)
+                    })),
+                    Err(_) => None,
+                }
             }
-        } else {
-            None
+            Err(_) => None,
         }
     }
 }
@@ -191,7 +193,7 @@ fn generate_token(
     TokenData { header, claims }
 }
 
-fn jsonvalue_to_pyobj(py: Python, value: &Value) -> Py<PyAny> {
+fn jsvalue_to_pyobj(py: Python, value: &Value) -> Py<PyAny> {
     match value {
         Value::Null => py.None(),
         Value::Bool(v) => v.into_py(py),
@@ -204,14 +206,14 @@ fn jsonvalue_to_pyobj(py: Python, value: &Value) -> Py<PyAny> {
         }
         Value::String(s) => s.into_py(py),
         Value::Array(arr) => {
-            let list = PyList::new_bound(py, arr.iter().map(|elem| jsonvalue_to_pyobj(py, elem)));
+            let list = PyList::new_bound(py, arr.iter().map(|elem| jsvalue_to_pyobj(py, elem)));
             list.into_py(py)
         }
         Value::Object(obj) => {
             let dict = PyDict::new_bound(py);
             for (inner_key, inner_val) in obj {
                 unsafe {
-                    dict.set_item(inner_key, jsonvalue_to_pyobj(py, inner_val))
+                    dict.set_item(inner_key, jsvalue_to_pyobj(py, inner_val))
                         .unsafe_unwrap()
                 };
             }
@@ -224,6 +226,6 @@ fn claims_to_pyhashmap(py: Python, hashmap: &TokenClaims) -> HashMap<String, Py<
     hashmap
         .0
         .iter()
-        .map(|(k, v)| (k.clone(), jsonvalue_to_pyobj(py, &v)))
+        .map(|(k, v)| (k.clone(), jsvalue_to_pyobj(py, &v)))
         .collect::<HashMap<String, Py<PyAny>>>()
 }

@@ -3,18 +3,25 @@ name = "rjwt"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [lib]
 name = "rjwt"
 crate-type = ["cdylib"]
 
 [dependencies]
-pyo3 = "0.21.2"
+pyo3 = { version = "0.21.*", features = [] }
 clang-sys = "1.7.0"
 unsafe_unwrap = "0.1.0"
 hmac = "0.12.1"
 sha2 = "0.10.8"
 serde_json = "1.0.117"
 serde-pyobject = "0.3.0"
-jsonwebtoken = "9.3.0"
+jsonwebtoken = { version="9.3.0", features = ["use_pem"] }
 serde = "1.0.202"
+
+[features]
+extension-module = ["pyo3/extension-module"]
+default = ["extension-module"]
+
+[profile.release]
+lto = "thin"
+overflow-checks = true
